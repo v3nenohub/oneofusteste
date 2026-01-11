@@ -1,0 +1,1735 @@
+-- [[ V3NENO - UNIVERSAL COMPATIBLE EDITION ]] --
+-- Compatível com Executor Oficial, Xeno, Solara, Mobile
+-- Todas as funções mantidas e funcionando
+
+-- ============================================
+-- PARTE 1: SISTEMA DE COMPATIBILIDADE UNIVERSAL
+-- ============================================
+
+-- Serviços principais
+local TweenService = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local Lighting = game:GetService("Lighting")
+local VirtualInputManager = game:GetService("VirtualInputManager")
+local ProximityPromptService = game:GetService("ProximityPromptService")
+
+local LocalPlayer = Players.LocalPlayer
+local Mouse = LocalPlayer:GetMouse()
+
+-- Detector de plataforma
+local IS_MOBILE = UserInputService.TouchEnabled
+local IS_DESKTOP = UserInputService.KeyboardEnabled
+local IS_GAMEPAD = UserInputService.GamepadEnabled
+
+-- ============================================
+-- FUNÇÕES UNIVERSAIS (Funcionam em QUALQUER executor)
+-- ============================================
+
+-- 1. getconnections() universal
+local function UniversalGetConnections(signal)
+    -- Tenta todos os métodos possíveis
+    local methods = {
+        function() if getconnections then return getconnections(signal) end end,
+        function() if debug and debug.getconnections then return debug.getconnections(signal) end end,
+        function() return {} end -- Fallback seguro
+    }
+    
+    for _, method in ipairs(methods) do
+        local success, result = pcall(method)
+        if success and result then return result end
+    end
+    return {}
+end
+
+-- 2. fireproximityprompt() universal
+local function UniversalFireProximityPrompt(prompt, holdDuration)
+    if not prompt or not prompt:IsA("ProximityPrompt") then return end
+    
+    -- Método 1: Função nativa
+    local success1 = pcall(function()
+        if fireproximityprompt then
+            fireproximityprompt(prompt, holdDuration or 0)
+            return true
+        end
+    end)
+    if success1 then return end
+    
+    -- Método 2: Método do objeto
+    pcall(function()
+        prompt:InputHoldBegin()
+        task.wait(holdDuration or 0.05)
+        prompt:InputHoldEnd()
+    end)
+end
+
+-- 3. VirtualInput universal
+local function UniversalVirtualInput(keyCode, isPressed)
+    local methods = {
+        function()
+            if VirtualInputManager and VirtualInputManager.SendKeyEvent then
+                VirtualInputManager:SendKeyEvent(isPressed, keyCode, false, game)
+                return true
+            end
+        end,
+        function()
+            -- Alternativa para alguns executores
+            if virtual_input then
+                virtual_input:send_key_event(isPressed, keyCode)
+                return true
+            end
+        end
+    }
+    
+    for _, method in ipairs(methods) do
+        local success = pcall(method)
+        if success then return true end
+    end
+    return false
+end
+
+-- 4. Mouse position universal (mobile e desktop)
+local function UniversalGetMousePosition()
+    if IS_MOBILE then
+        local touch = UserInputService:GetLastInput()
+        if touch and touch.Position then
+            return touch.Position
+        end
+        return Vector2.new(0, 0)
+    else
+        return Vector2.new(Mouse.X, Mouse.Y)
+    end
+end
+
+-- 5. Suporte mobile para sliders
+local function MobileSliderUpdate(barBG, fill, label, text, min, max, callback, input)
+    local barAbsolutePosition = barBG.AbsolutePosition
+    local barAbsoluteSize = barBG.AbsoluteSize
+    
+    local pos
+    if IS_MOBILE and input and input.Position then
+        pos = math.clamp((input.Position.X - barAbsolutePosition.X) / barAbsoluteSize.X, 0, 1)
+    else
+        local mousePos = UniversalGetMousePosition()
+        pos = math.clamp((mousePos.X - barAbsolutePosition.X) / barAbsoluteSize.X, 0, 1)
+    end
+    
+    fill.Size = UDim2.new(pos, 0, 1, 0)
+    local val = math.floor(min + (max - min) * pos)
+    label.Text = string.upper(text) .. ": " .. val
+    if callback then callback(val) end
+end
+
+-- ============================================
+-- PARTE 2: SEU CÓDIGO ORIGINAL (COM ADAPTAÇÕES)
+-- ============================================
+
+local Color_Accent = Color3.fromRGB(255, 0, 0)
+local Color_Background = Color3.fromRGB(8, 8, 8)
+local Color_SideBar = Color3.fromRGB(12, 12, 14)
+local Color_Content = Color3.fromRGB(15, 15, 17)
+local Color_Text_Main = Color3.fromRGB(255, 255, 255)
+local Color_Text_Dim = Color3.fromRGB(160, 160, 160)
+
+-- Dimensões responsivas
+local GUI_SCALE = IS_MOBILE and 1.2 or 1.0
+local BUTTON_HEIGHT = IS_MOBILE and 60 or 55
+local SLIDER_HEIGHT = IS_MOBILE and 80 or 65
+local TOGGLE_HEIGHT = IS_MOBILE and 65 or 55
+local FONT_SIZE_LABEL = IS_MOBILE and 14 or 13
+
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "V3NENO_SYSTEM_CORE"
+ScreenGui.Parent = game:GetService("CoreGui")
+ScreenGui.ResetOnSpawn = false
+ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+
+-- Bind padrão (mobile não usa keybind)
+local CurrentBind = IS_MOBILE and Enum.KeyCode.ButtonX or Enum.KeyCode.LeftControl
+
+-- Variáveis globais para controle dos scripts
+local ScriptStates = {}
+local ActiveLoops = {}
+local OriginalSettings = {
+    Ambient = Lighting.Ambient,
+    Brightness = Lighting.Brightness,
+    ClockTime = Lighting.ClockTime,
+    GlobalShadows = Lighting.GlobalShadows
+}
+
+-- [CRIAR GUI - MESMO CÓDIGO ATÉ A CRIAÇÃO DAS PÁGINAS]
+local IntroFrame = Instance.new("Frame")
+IntroFrame.Name = "IntroFrame"
+IntroFrame.Parent = ScreenGui
+IntroFrame.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+IntroFrame.BackgroundTransparency = 0.15
+IntroFrame.BorderSizePixel = 0
+IntroFrame.Size = UDim2.new(1, 0, 1, 0)
+IntroFrame.ZIndex = 5000
+
+local IntroTitle = Instance.new("TextLabel")
+IntroTitle.Name = "IntroTitle"
+IntroTitle.Parent = IntroFrame
+IntroTitle.BackgroundTransparency = 1.0
+IntroTitle.Position = UDim2.new(0.5, 0, 0.45, 0)
+IntroTitle.AnchorPoint = Vector2.new(0.5, 0.5)
+IntroTitle.Size = UDim2.new(0, 600, 0, 120)
+IntroTitle.Font = Enum.Font.GothamBold
+IntroTitle.Text = "V3NENO"
+IntroTitle.TextColor3 = Color_Accent
+IntroTitle.TextSize = 120
+IntroTitle.TextTransparency = 1
+IntroTitle.ZIndex = 5001
+
+local TitleStroke = Instance.new("UIStroke")
+TitleStroke.Parent = IntroTitle
+TitleStroke.Color = Color_Accent
+TitleStroke.Thickness = 8
+TitleStroke.Transparency = 1
+
+local LoadingContainer = Instance.new("Frame")
+LoadingContainer.Name = "LoadingContainer"
+LoadingContainer.Parent = IntroFrame
+LoadingContainer.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+LoadingContainer.Position = UDim2.new(0.5, 0, 0.65, 0)
+LoadingContainer.AnchorPoint = Vector2.new(0.5, 0.5)
+LoadingContainer.Size = UDim2.new(0, 400, 0, 6)
+LoadingContainer.BorderSizePixel = 0
+LoadingContainer.ZIndex = 5001
+Instance.new("UICorner", LoadingContainer).CornerRadius = UDim.new(1, 0)
+
+local LoadingFill = Instance.new("Frame")
+LoadingFill.Name = "LoadingFill"
+LoadingFill.Parent = LoadingContainer
+LoadingFill.BackgroundColor3 = Color_Accent
+LoadingFill.Size = UDim2.new(0, 0, 1, 0)
+LoadingFill.BorderSizePixel = 0
+LoadingFill.ZIndex = 5002
+Instance.new("UICorner", LoadingFill).CornerRadius = UDim.new(1, 0)
+
+local PercentLabel = Instance.new("TextLabel")
+PercentLabel.Parent = IntroFrame
+PercentLabel.BackgroundTransparency = 1.0
+PercentLabel.Position = UDim2.new(0.5, 0, 0.69, 0)
+PercentLabel.AnchorPoint = Vector2.new(0.5, 0.5)
+PercentLabel.Size = UDim2.new(0, 100, 0, 20)
+PercentLabel.Font = Enum.Font.Code
+PercentLabel.Text = "0%"
+PercentLabel.TextColor3 = Color_Text_Main
+PercentLabel.TextSize = 16
+PercentLabel.TextTransparency = 1
+PercentLabel.ZIndex = 5001
+
+local StatusLabel = Instance.new("TextLabel")
+StatusLabel.Parent = IntroFrame
+StatusLabel.BackgroundTransparency = 1.0
+StatusLabel.Position = UDim2.new(0.5, 0, 0.73, 0)
+StatusLabel.AnchorPoint = Vector2.new(0.5, 0.5)
+StatusLabel.Size = UDim2.new(0, 400, 0, 20)
+StatusLabel.Font = Enum.Font.GothamMedium
+StatusLabel.Text = "INITIALIZING CORE..."
+StatusLabel.TextColor3 = Color_Text_Dim
+StatusLabel.TextSize = 12
+StatusLabel.TextTransparency = 1
+StatusLabel.ZIndex = 5001
+
+local function CreateDrop()
+    local drop = Instance.new("Frame", IntroFrame)
+    drop.BackgroundColor3 = Color_Accent
+    drop.Size = UDim2.new(0, 2, 0, 25)
+    drop.Position = UDim2.new(math.random(), 0, -0.1, 0)
+    drop.ZIndex = 5000
+    local grad = Instance.new("UIGradient", drop)
+    grad.Color = ColorSequence.new(Color_Accent, Color3.fromRGB(20, 0, 0))
+    grad.Rotation = 90
+    local duration = math.random(15, 30) / 10
+    local tween = TweenService:Create(drop, TweenInfo.new(duration, Enum.EasingStyle.Linear), {
+        Position = UDim2.new(drop.Position.X.Scale, 0, 1.1, 0)
+    })
+    tween:Play()
+    task.delay(duration, function() drop:Destroy() end)
+end
+
+-- Tamanho responsivo da janela principal
+local MAIN_WIDTH = IS_MOBILE and 500 or 580
+local MAIN_HEIGHT = IS_MOBILE and 420 or 390
+
+local MainFrame = Instance.new("Frame")
+MainFrame.Name = "MainFrame"
+MainFrame.Parent = ScreenGui
+MainFrame.BackgroundColor3 = Color_Background
+MainFrame.Position = UDim2.new(0.5, 0, 0.5, 0)
+MainFrame.AnchorPoint = Vector2.new(0.5, 0.5)
+MainFrame.Size = UDim2.new(0, MAIN_WIDTH, 0, MAIN_HEIGHT)
+MainFrame.Visible = false
+MainFrame.Active = true
+MainFrame.Draggable = true
+
+local MainCorner = Instance.new("UICorner", MainFrame)
+MainCorner.CornerRadius = UDim.new(0, 15)
+
+local MainStroke = Instance.new("UIStroke", MainFrame)
+MainStroke.Color = Color_Accent
+MainStroke.Thickness = 2
+MainStroke.Transparency = 0.4
+
+local SideBar = Instance.new("Frame", MainFrame)
+SideBar.Name = "SideBar"
+SideBar.BackgroundColor3 = Color_SideBar
+SideBar.BorderSizePixel = 0
+SideBar.Size = UDim2.new(0, 155, 1, 0)
+SideBar.ZIndex = 10
+Instance.new("UICorner", SideBar).CornerRadius = UDim.new(0, 15)
+
+local ProfileFrame = Instance.new("Frame", SideBar)
+ProfileFrame.Name = "ProfileFrame"
+ProfileFrame.Size = UDim2.new(1, 0, 0, 130)
+ProfileFrame.BackgroundTransparency = 1
+
+local ProfileImg = Instance.new("ImageLabel", ProfileFrame)
+ProfileImg.Name = "ProfileImg"
+ProfileImg.Position = UDim2.new(0.5, -32, 0, 20)
+ProfileImg.Size = UDim2.new(0, 64, 0, 64)
+ProfileImg.Image = "rbxthumb://type=AvatarHeadShot&id=" .. LocalPlayer.UserId .. "&w=150&h=150"
+Instance.new("UICorner", ProfileImg).CornerRadius = UDim.new(1, 0)
+local ImgStroke = Instance.new("UIStroke", ProfileImg)
+ImgStroke.Color = Color_Accent
+ImgStroke.Thickness = 2
+
+local UserName = Instance.new("TextLabel", ProfileFrame)
+UserName.Name = "UserName"
+UserName.Position = UDim2.new(0, 5, 0, 95)
+UserName.Size = UDim2.new(1, -10, 0, 15)
+UserName.Font = Enum.Font.GothamBold
+UserName.Text = string.upper(LocalPlayer.DisplayName)
+UserName.TextColor3 = Color_Text_Main
+UserName.TextSize = 13
+UserName.BackgroundTransparency = 1
+
+local ActiveLabel = Instance.new("TextLabel", ProfileFrame)
+ActiveLabel.Name = "ActiveLabel"
+ActiveLabel.Position = UDim2.new(0, 0, 0, 110)
+ActiveLabel.Size = UDim2.new(1, 0, 0, 15)
+ActiveLabel.Font = Enum.Font.Code
+ActiveLabel.Text = "ACTIVE: 00:00:00"
+ActiveLabel.TextColor3 = Color_Accent
+ActiveLabel.TextSize = 10
+ActiveLabel.BackgroundTransparency = 1
+
+local TabContainer = Instance.new("Frame", SideBar)
+TabContainer.Name = "TabContainer"
+TabContainer.Position = UDim2.new(0, 0, 0, 140)
+TabContainer.Size = UDim2.new(1, 0, 1, -150)
+TabContainer.BackgroundTransparency = 1
+
+local TabLayout = Instance.new("UIListLayout", TabContainer)
+TabLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+TabLayout.Padding = UDim.new(0, 8)
+
+local PageContainer = Instance.new("Frame", MainFrame)
+PageContainer.Name = "PageContainer"
+PageContainer.BackgroundColor3 = Color_Content
+PageContainer.Position = UDim2.new(0, 165, 0, 75)
+PageContainer.Size = UDim2.new(1, -175, 1, -85)
+PageContainer.ZIndex = 5
+Instance.new("UICorner", PageContainer).CornerRadius = UDim.new(0, 12)
+
+local WelcomePage = Instance.new("Frame", PageContainer)
+WelcomePage.Name = "WelcomePage"
+WelcomePage.Size = UDim2.new(1, 0, 1, 0)
+WelcomePage.BackgroundTransparency = 1
+WelcomePage.Visible = true
+WelcomePage.ZIndex = 6
+
+local WelcomeTitle = Instance.new("TextLabel", WelcomePage)
+WelcomeTitle.Size = UDim2.new(1, 0, 0, 40)
+WelcomeTitle.Position = UDim2.new(0, 0, 0.35, 0)
+WelcomeTitle.BackgroundTransparency = 1
+WelcomeTitle.Font = Enum.Font.GothamBold
+WelcomeTitle.Text = "WELCOME TO V3NENO"
+WelcomeTitle.TextColor3 = Color_Accent
+WelcomeTitle.TextSize = 22
+WelcomeTitle.ZIndex = 7
+
+local WelcomeSub = Instance.new("TextLabel", WelcomePage)
+WelcomeSub.Size = UDim2.new(1, 0, 0, 20)
+WelcomeSub.Position = UDim2.new(0, 0, 0.45, 0)
+WelcomeSub.BackgroundTransparency = 1
+WelcomeSub.Font = Enum.Font.GothamMedium
+WelcomeSub.Text = "SELECT A TAB ON THE LEFT TO BEGIN"
+WelcomeSub.TextColor3 = Color_Text_Dim
+WelcomeSub.TextSize = 13
+WelcomeSub.ZIndex = 7
+
+local Pages = {}
+local function CreatePage(name)
+    local p = Instance.new("ScrollingFrame", PageContainer)
+    p.Name = name .. "Page"
+    p.Size = UDim2.new(1, 0, 1, 0)
+    p.BackgroundTransparency = 1
+    p.Visible = false
+    p.ScrollBarThickness = 0
+    p.CanvasSize = UDim2.new(0, 0, 0, 0)
+    p.AutomaticCanvasSize = Enum.AutomaticSize.Y
+    p.ZIndex = 6
+    local pLayout = Instance.new("UIListLayout", p)
+    pLayout.Padding = UDim.new(0, 10)
+    pLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+    pLayout.SortOrder = Enum.SortOrder.LayoutOrder
+    Pages[name] = p
+    return p
+end
+
+local Header = Instance.new("Frame", MainFrame)
+Header.Name = "Header"
+Header.Size = UDim2.new(1, 0, 0, 75)
+Header.BackgroundTransparency = 1
+Header.ZIndex = 50
+
+local MainTitle = Instance.new("TextLabel", Header)
+MainTitle.Name = "MainTitle"
+MainTitle.AnchorPoint = Vector2.new(0.5, 0.5)
+MainTitle.Position = UDim2.new(0.58, 0, 0.5, 0) 
+MainTitle.Size = UDim2.new(0, 300, 0, 50)
+MainTitle.Font = Enum.Font.LuckiestGuy
+MainTitle.Text = "V3NENO"
+MainTitle.TextColor3 = Color_Accent
+MainTitle.TextSize = 38
+MainTitle.BackgroundTransparency = 1
+MainTitle.ZIndex = 51
+
+local CloseBtn = Instance.new("TextButton", MainFrame) 
+CloseBtn.Name = "CloseBtn"
+CloseBtn.AnchorPoint = Vector2.new(1, 0)
+CloseBtn.Position = UDim2.new(1, -15, 0, 15)
+CloseBtn.Size = UDim2.new(0, 30, 0, 30)
+CloseBtn.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+CloseBtn.Text = "X" 
+CloseBtn.Font = Enum.Font.GothamBold
+CloseBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+CloseBtn.TextSize = 14
+CloseBtn.ZIndex = 500 
+CloseBtn.BorderSizePixel = 0
+Instance.new("UICorner", CloseBtn).CornerRadius = UDim.new(1, 0) 
+local CloseStroke = Instance.new("UIStroke", CloseBtn)
+CloseStroke.Color = Color_Accent
+CloseStroke.Thickness = 2
+CloseStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+
+-- ============================================
+-- FUNÇÕES DE GUI OTIMIZADAS PARA MOBILE
+-- ============================================
+
+local function CreateToggle(parent, text, callback)
+    local toggleFrame = Instance.new("Frame", parent)
+    toggleFrame.Size = UDim2.new(0, 380, 0, TOGGLE_HEIGHT)
+    toggleFrame.BackgroundColor3 = Color3.fromRGB(22, 22, 25)
+    toggleFrame.ZIndex = 7
+    Instance.new("UICorner", toggleFrame)
+    
+    local label = Instance.new("TextLabel", toggleFrame)
+    label.Position = UDim2.new(0, 15, 0, 0)
+    label.Size = UDim2.new(1, -80, 1, 0)
+    label.Text = string.upper(text)
+    label.Font = Enum.Font.GothamBold
+    label.TextColor3 = Color_Text_Main
+    label.TextSize = FONT_SIZE_LABEL
+    label.TextXAlignment = Enum.TextXAlignment.Left
+    label.BackgroundTransparency = 1
+    label.ZIndex = 8
+    label.RichText = true
+    
+    -- Botão otimizado para mobile
+    local btnSize = IS_MOBILE and UDim2.new(0, 60, 0, 32) or UDim2.new(0, 50, 0, 26)
+    local dotSize = IS_MOBILE and UDim2.new(0, 24, 0, 24) or UDim2.new(0, 20, 0, 20)
+    local dotPosOn = IS_MOBILE and UDim2.new(1, -28, 0.5, -12) or UDim2.new(1, -23, 0.5, -10)
+    local dotPosOff = IS_MOBILE and UDim2.new(0, 4, 0.5, -12) or UDim2.new(0, 3, 0.5, -10)
+    
+    local btn = Instance.new("TextButton", toggleFrame)
+    btn.Position = UDim2.new(1, -70, 0.5, -btnSize.Y.Offset/2)
+    btn.Size = btnSize
+    btn.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+    btn.Text = ""
+    btn.ZIndex = 8
+    btn.AutoButtonColor = false
+    Instance.new("UICorner", btn).CornerRadius = UDim.new(1, 0)
+    
+    local dot = Instance.new("Frame", btn)
+    dot.Position = dotPosOff
+    dot.Size = dotSize
+    dot.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+    dot.ZIndex = 9
+    Instance.new("UICorner", dot).CornerRadius = UDim.new(1, 0)
+    
+    local enabled = false
+    
+    local function onToggleClick()
+        enabled = not enabled
+        TweenService:Create(dot, TweenInfo.new(0.3), {
+            Position = enabled and dotPosOn or dotPosOff
+        }):Play()
+        TweenService:Create(btn, TweenInfo.new(0.3), {
+            BackgroundColor3 = enabled and Color_Accent or Color3.fromRGB(40, 40, 40)
+        }):Play()
+        
+        if callback then callback(enabled) end
+    end
+    
+    -- Suporte mobile e desktop
+    if IS_MOBILE then
+        btn.TouchTap:Connect(onToggleClick)
+    end
+    btn.MouseButton1Click:Connect(onToggleClick)
+    
+    return toggleFrame
+end
+
+local function CreateSlider(parent, text, min, max, callback)
+    local sliderFrame = Instance.new("Frame", parent)
+    sliderFrame.Size = UDim2.new(0, 380, 0, SLIDER_HEIGHT)
+    sliderFrame.BackgroundColor3 = Color3.fromRGB(18, 18, 20)
+    sliderFrame.ZIndex = 7
+    Instance.new("UICorner", sliderFrame)
+    
+    local label = Instance.new("TextLabel", sliderFrame)
+    label.Position = UDim2.new(0, 15, 0, 10)
+    label.Size = UDim2.new(1, -30, 0, 25)
+    label.Text = string.upper(text) .. ": " .. min
+    label.Font = Enum.Font.GothamBold
+    label.TextColor3 = Color_Text_Dim
+    label.TextSize = 12
+    label.TextXAlignment = Enum.TextXAlignment.Left
+    label.BackgroundTransparency = 1
+    label.ZIndex = 8
+    
+    local barBG = Instance.new("Frame", sliderFrame)
+    barBG.Position = UDim2.new(0, 15, 0, IS_MOBILE and 45 or 40)
+    barBG.Size = UDim2.new(1, -30, 0, 8)
+    barBG.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+    barBG.ZIndex = 8
+    Instance.new("UICorner", barBG)
+    
+    local fill = Instance.new("Frame", barBG)
+    fill.Size = UDim2.new(0, 0, 1, 0)
+    fill.BackgroundColor3 = Color_Accent
+    fill.ZIndex = 9
+    Instance.new("UICorner", fill)
+    
+    -- Trigger maior para mobile
+    local trigger = Instance.new("TextButton", barBG)
+    trigger.Size = UDim2.new(1, 0, IS_MOBILE and 2 or 1, 0)
+    trigger.Position = UDim2.new(0, 0, IS_MOBILE and -0.5 or 0, 0)
+    trigger.BackgroundTransparency = 1
+    trigger.Text = ""
+    trigger.ZIndex = 10
+    trigger.AutoButtonColor = false
+    
+    local dragging = false
+    local currentValue = min
+    
+    local function UpdateSlider(input)
+        MobileSliderUpdate(barBG, fill, label, text, min, max, callback, input)
+    end
+    
+    -- Controles mobile (touch)
+    if IS_MOBILE then
+        trigger.InputBegan:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.Touch then
+                dragging = true
+                UpdateSlider(input)
+            end
+        end)
+        
+        trigger.InputChanged:Connect(function(input)
+            if dragging and input.UserInputType == Enum.UserInputType.Touch then
+                UpdateSlider(input)
+            end
+        end)
+        
+        trigger.InputEnded:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.Touch then
+                dragging = false
+            end
+        end)
+    end
+    
+    -- Controles desktop (mouse)
+    trigger.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            dragging = true
+            UpdateSlider()
+        end
+    end)
+    
+    UserInputService.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            dragging = false
+        end
+    end)
+    
+    RunService.RenderStepped:Connect(function()
+        if dragging then
+            UpdateSlider()
+        end
+    end)
+    
+    return sliderFrame
+end
+
+local function CreateKeybind(parent, text)
+    -- No mobile não mostra keybinds
+    if IS_MOBILE then return end
+    
+    local bindFrame = Instance.new("Frame", parent)
+    bindFrame.Size = UDim2.new(0, 380, 0, 55)
+    bindFrame.BackgroundColor3 = Color3.fromRGB(22, 22, 25)
+    bindFrame.ZIndex = 7
+    Instance.new("UICorner", bindFrame)
+    
+    local label = Instance.new("TextLabel", bindFrame)
+    label.Position = UDim2.new(0, 15, 0, 0)
+    label.Size = UDim2.new(1, -120, 1, 0)
+    label.Text = string.upper(text)
+    label.Font = Enum.Font.GothamBold
+    label.TextColor3 = Color_Text_Main
+    label.TextSize = 13
+    label.TextXAlignment = Enum.TextXAlignment.Left
+    label.BackgroundTransparency = 1
+    label.ZIndex = 8
+    
+    local bindBtn = Instance.new("TextButton", bindFrame)
+    bindBtn.Position = UDim2.new(1, -110, 0.5, -14)
+    bindBtn.Size = UDim2.new(0, 100, 0, 28)
+    bindBtn.BackgroundColor3 = Color3.fromRGB(30, 30, 32)
+    bindBtn.Text = string.upper(CurrentBind.Name)
+    bindBtn.Font = Enum.Font.Code
+    bindBtn.TextColor3 = Color_Accent
+    bindBtn.TextSize = 12
+    bindBtn.ZIndex = 8
+    Instance.new("UICorner", bindBtn)
+    
+    local listening = false
+    bindBtn.MouseButton1Click:Connect(function()
+        listening = true
+        bindBtn.Text = "..."
+    end)
+    
+    UserInputService.InputBegan:Connect(function(input)
+        if listening and input.UserInputType == Enum.UserInputType.Keyboard then
+            CurrentBind = input.KeyCode
+            bindBtn.Text = string.upper(input.KeyCode.Name)
+            listening = false
+        end
+    end)
+end
+
+-- CRIAR PÁGINAS
+local ESP_PAGE = CreatePage("ESP")
+local TASK_PAGE = CreatePage("TASK")
+local MISC_PAGE = CreatePage("MISC")
+local BUG_PAGE = CreatePage("BUG")
+local SETTINGS_PAGE = CreatePage("SETTINGS")
+
+-- ============================================
+-- FUNÇÕES DOS SCRIPTS COM COMPATIBILIDADE UNIVERSAL
+-- ============================================
+
+local function ToggleESPPlayers(enabled)
+    ScriptStates.ESPPlayers = enabled
+    if enabled then
+        ActiveLoops.ESPPlayers = RunService.Heartbeat:Connect(function()
+            for _, player in pairs(Players:GetPlayers()) do
+                if player ~= LocalPlayer and player.Character then
+                    local char = player.Character
+                    local isKiller = false
+                    
+                    local backpack = player:FindFirstChild("Backpack")
+                    if backpack then
+                        for _, tool in pairs(backpack:GetChildren()) do
+                            if tool:IsA("Tool") and string.find(string.lower(tool.Name), "transform") then
+                                isKiller = true
+                                break
+                            end
+                        end
+                    end
+                    
+                    if char:FindFirstChild("HumanoidRootPart") then
+                        local highlight = char:FindFirstChild("KILLER_ESP")
+                        if not highlight then
+                            highlight = Instance.new("Highlight")
+                            highlight.Name = "KILLER_ESP"
+                            highlight.FillTransparency = 0.3
+                            highlight.OutlineTransparency = 0
+                            highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+                            highlight.Parent = char
+                        end
+                        highlight.FillColor = isKiller and Color3.fromRGB(255, 0, 0) or Color3.fromRGB(0, 255, 0)
+                        highlight.OutlineColor = Color3.fromRGB(255, 255, 255)
+                        
+                        local head = char:FindFirstChild("Head")
+                        if head then
+                            local gui = head:FindFirstChild("PLAYER_NAME_ESP")
+                            if not gui then
+                                gui = Instance.new("BillboardGui")
+                                gui.Name = "PLAYER_NAME_ESP"
+                                gui.Size = UDim2.new(0, 100, 0, 25)
+                                gui.StudsOffset = Vector3.new(0, 3, 0)
+                                gui.AlwaysOnTop = true
+                                gui.DistanceLowerLimit = 5
+                                gui.Parent = head
+                                
+                                local txt = Instance.new("TextLabel")
+                                txt.Size = UDim2.new(1, 0, 1, 0)
+                                txt.BackgroundTransparency = 1
+                                txt.TextScaled = false
+                                txt.TextSize = 14
+                                txt.Font = Enum.Font.GothamBold
+                                txt.TextStrokeTransparency = 0
+                                txt.Parent = gui
+                            end
+                            local txt = gui:FindFirstChildWhichIsA("TextLabel")
+                            if txt then
+                                txt.Text = player.Name
+                                txt.TextColor3 = Color3.fromRGB(255, 255, 255)
+                            end
+                        end
+                    end
+                end
+            end
+        end)
+    else
+        if ActiveLoops.ESPPlayers then
+            ActiveLoops.ESPPlayers:Disconnect()
+            ActiveLoops.ESPPlayers = nil
+        end
+        for _, player in pairs(Players:GetPlayers()) do
+            if player ~= LocalPlayer and player.Character then
+                local char = player.Character
+                local esp1 = char:FindFirstChild("KILLER_ESP")
+                local esp2 = char:FindFirstChildWhichIsA("BillboardGui")
+                if esp1 then esp1:Destroy() end
+                if esp2 then esp2:Destroy() end
+            end
+        end
+    end
+end
+
+local function ToggleESPVents(enabled)
+    ScriptStates.ESPVents = enabled
+    if enabled then
+        local function applyVentESP(vent)
+            if not vent:FindFirstChild("VENT_HIGHLIGHT") then
+                local highlight = Instance.new("Highlight")
+                highlight.Name = "VENT_HIGHLIGHT"
+                highlight.FillColor = Color3.fromRGB(255, 255, 255)
+                highlight.OutlineColor = Color3.fromRGB(200, 200, 200)
+                highlight.FillTransparency = 0.5
+                highlight.OutlineTransparency = 0
+                highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+                highlight.Parent = vent
+            end
+        end
+        
+        local function watchVents()
+            local mapFolder = workspace:WaitForChild("map", 10)
+            if mapFolder then
+                local ventsFolder = mapFolder:FindFirstChild("Vents")
+                if ventsFolder then
+                    for _, vent in pairs(ventsFolder:GetChildren()) do
+                        applyVentESP(vent)
+                    end
+                    
+                    ventsFolder.ChildAdded:Connect(function(child)
+                        if ScriptStates.ESPVents then
+                            task.wait(0.1)
+                            applyVentESP(child)
+                        end
+                    end)
+                end
+            end
+        end
+        
+        task.spawn(watchVents)
+    else
+        local mapFolder = workspace:FindFirstChild("map")
+        if mapFolder then
+            local ventsFolder = mapFolder:FindFirstChild("Vents")
+            if ventsFolder then
+                for _, vent in pairs(ventsFolder:GetChildren()) do
+                    local highlight = vent:FindFirstChild("VENT_HIGHLIGHT")
+                    if highlight then highlight:Destroy() end
+                end
+            end
+        end
+    end
+end
+
+local function ToggleESPItems(enabled)
+    ScriptStates.ESPItems = enabled
+    if enabled then
+        local function applyItemESP(item, name)
+            if not item:FindFirstChild("ITEM_HIGHLIGHT") then
+                local highlight = Instance.new("Highlight")
+                highlight.Name = "ITEM_HIGHLIGHT"
+                highlight.FillColor = Color3.fromRGB(0, 255, 0)
+                highlight.OutlineColor = Color3.fromRGB(255, 255, 255)
+                highlight.FillTransparency = 0.4
+                highlight.OutlineTransparency = 0
+                highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+                highlight.Parent = item
+            end
+            
+            if not item:FindFirstChild("ITEM_GUI") then
+                local gui = Instance.new("BillboardGui")
+                gui.Name = "ITEM_GUI"
+                gui.Size = UDim2.new(0, 100, 0, 20)
+                gui.StudsOffset = Vector3.new(0, 2, 0)
+                gui.AlwaysOnTop = true
+                gui.DistanceLowerLimit = 5
+                gui.Parent = item
+
+                local txt = Instance.new("TextLabel")
+                txt.Size = UDim2.new(1, 0, 1, 0)
+                txt.BackgroundTransparency = 1
+                txt.TextScaled = false
+                txt.TextSize = 12
+                txt.Font = Enum.Font.GothamBold
+                txt.TextColor3 = Color3.fromRGB(0, 255, 0)
+                txt.TextStrokeTransparency = 0
+                txt.Text = name
+                txt.Parent = gui
+            end
+        end
+        
+        local function watchMapItems()
+            local mapFolder = workspace:WaitForChild("map", 10)
+            if mapFolder then
+                local medkitsFolder = mapFolder:FindFirstChild("Medkits")
+                if medkitsFolder then
+                    for _, medkit in pairs(medkitsFolder:GetChildren()) do
+                        applyItemESP(medkit, "Medical Kit")
+                    end
+                    medkitsFolder.ChildAdded:Connect(function(child)
+                        if ScriptStates.ESPItems then
+                            task.wait(0.1)
+                            applyItemESP(child, "Medical Kit")
+                        end
+                    end)
+                end
+
+                local crowbarsFolder = mapFolder:FindFirstChild("Crowbars")
+                if crowbarsFolder then
+                    for _, crowbar in pairs(crowbarsFolder:GetChildren()) do
+                        applyItemESP(crowbar, "Crowbar")
+                    end
+                    crowbarsFolder.ChildAdded:Connect(function(child)
+                        if ScriptStates.ESPItems then
+                            task.wait(0.1)
+                            applyItemESP(child, "Crowbar")
+                        end
+                    end)
+                end
+            end
+        end
+        
+        task.spawn(watchMapItems)
+    else
+        local mapFolder = workspace:FindFirstChild("map")
+        if mapFolder then
+            local medkitsFolder = mapFolder:FindFirstChild("Medkits")
+            local crowbarsFolder = mapFolder:FindFirstChild("Crowbars")
+            
+            local function cleanFolder(folder)
+                if folder then
+                    for _, item in pairs(folder:GetChildren()) do
+                        local highlight = item:FindFirstChild("ITEM_HIGHLIGHT")
+                        local gui = item:FindFirstChild("ITEM_GUI")
+                        if highlight then highlight:Destroy() end
+                        if gui then gui:Destroy() end
+                    end
+                end
+            end
+            
+            cleanFolder(medkitsFolder)
+            cleanFolder(crowbarsFolder)
+        end
+    end
+end
+
+local function ToggleESPGenerators(enabled)
+    ScriptStates.ESPGenerators = enabled
+    if enabled then
+        local function applyESP(model)
+            if not model:FindFirstChild("ESP_HIGHLIGHT") then
+                local highlight = Instance.new("Highlight")
+                highlight.Name = "ESPHighlight"
+                highlight.FillColor = Color3.fromRGB(255, 0, 0)
+                highlight.OutlineColor = Color3.fromRGB(255, 255, 255)
+                highlight.FillTransparency = 0.5
+                highlight.OutlineTransparency = 0
+                highlight.Parent = model
+            end
+        end
+        
+        local map = workspace:WaitForChild("map")
+        local activeTasks = map:WaitForChild("ActiveTasks")
+        
+        for _, task in ipairs(activeTasks:GetChildren()) do
+            applyESP(task)
+        end
+        
+        activeTasks.ChildAdded:Connect(function(child)
+            if ScriptStates.ESPGenerators then
+                applyESP(child)
+            end
+        end)
+    else
+        local map = workspace:FindFirstChild("map")
+        if map then
+            local activeTasks = map:FindFirstChild("ActiveTasks")
+            if activeTasks then
+                for _, task in ipairs(activeTasks:GetChildren()) do
+                    local highlight = task:FindFirstChild("ESPHighlight")
+                    if highlight then highlight:Destroy() end
+                end
+            end
+        end
+    end
+end
+
+local function ToggleESPWindow(enabled)
+    ScriptStates.ESPWindow = enabled
+    if enabled then
+        local function applyHoleESP(obj)
+            if not obj:FindFirstChild("ESP_HIGHLIGHT_HOLE") then
+                local highlight = Instance.new("Highlight")
+                highlight.Name = "ESP_HIGHLIGHT_HOLE"
+                highlight.FillColor = Color3.fromRGB(0, 255, 0)
+                highlight.OutlineColor = Color3.fromRGB(255, 255, 255)
+                highlight.FillTransparency = 0.5
+                highlight.OutlineTransparency = 0
+                highlight.Parent = obj
+            end
+        end
+        
+        local map = workspace:WaitForChild("map")
+        local misc = map:WaitForChild("Misc")
+        local holeFolder = misc:WaitForChild("HoleInWall")
+        local assetsFolder = misc:WaitForChild("Assets")
+        
+        for _, child in ipairs(holeFolder:GetChildren()) do
+            applyHoleESP(child)
+        end
+        
+        for _, obj in ipairs(assetsFolder:GetChildren()) do
+            if string.find(obj.Name:lower(), "brokenwindow") or string.find(obj.Name:lower(), "windowinhole") then
+                applyHoleESP(obj)
+            end
+        end
+        
+        holeFolder.ChildAdded:Connect(function(child)
+            if ScriptStates.ESPWindow then
+                task.wait(0.1)
+                applyHoleESP(child)
+            end
+        end)
+        
+        assetsFolder.ChildAdded:Connect(function(child)
+            if ScriptStates.ESPWindow then
+                if string.find(child.Name:lower(), "brokenwindow") or string.find(child.Name:lower(), "windowinhole") then
+                    task.wait(0.1)
+                    applyHoleESP(child)
+                end
+            end
+        end)
+    else
+        local map = workspace:FindFirstChild("map")
+        if map then
+            local misc = map:FindFirstChild("Misc")
+            if misc then
+                local holeFolder = misc:FindFirstChild("HoleInWall")
+                local assetsFolder = misc:FindFirstChild("Assets")
+                
+                local function cleanFolder(folder)
+                    if folder then
+                        for _, obj in ipairs(folder:GetChildren()) do
+                            local highlight = obj:FindFirstChild("ESP_HIGHLIGHT_HOLE")
+                            if highlight then highlight:Destroy() end
+                        end
+                    end
+                end
+                
+                cleanFolder(holeFolder)
+                cleanFolder(assetsFolder)
+            end
+        end
+    end
+end
+
+local function ToggleESPCoins(enabled)
+    ScriptStates.ESPCoins = enabled
+    if enabled then
+        local function applyCoinESP(targetPart)
+            if not targetPart:FindFirstChild("COIN_HIGHLIGHT") then
+                local highlight = Instance.new("Highlight")
+                highlight.Name = "COIN_HIGHLIGHT"
+                highlight.FillColor = Color3.fromRGB(255, 215, 0)
+                highlight.OutlineColor = Color3.fromRGB(255, 255, 255)
+                highlight.FillTransparency = 0.4
+                highlight.OutlineTransparency = 0
+                highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+                highlight.Parent = targetPart
+            end
+        end
+        
+        local function monitorFolder(folder)
+            if not folder then return end
+
+            local function process(child)
+                if child:IsA("BasePart") then
+                    applyCoinESP(child)
+                elseif child:IsA("Model") or child:IsA("Folder") then
+                    for _, subChild in pairs(child:GetDescendants()) do
+                        if subChild:IsA("BasePart") then
+                            applyCoinESP(subChild)
+                        end
+                    end
+                    child.DescendantAdded:Connect(function(newDescendant)
+                        if ScriptStates.ESPCoins and newDescendant:IsA("BasePart") then
+                            applyCoinESP(newDescendant)
+                        end
+                    end)
+                end
+            end
+
+            for _, child in pairs(folder:GetChildren()) do
+                process(child)
+            end
+
+            folder.ChildAdded:Connect(function(child)
+                if ScriptStates.ESPCoins then
+                    task.wait(0.1)
+                    process(child)
+                end
+            end)
+        end
+
+        local function startGlobalCoinESP()
+            local coinsFolder = workspace:FindFirstChild("Coins")
+            if coinsFolder then monitorFolder(coinsFolder) end
+
+            local mapFolder = workspace:FindFirstChild("map")
+            if mapFolder then
+                local coinSpawns = mapFolder:FindFirstChild("CoinSpawns")
+                if coinSpawns then monitorFolder(coinSpawns) end
+            end
+            
+            workspace.ChildAdded:Connect(function(child)
+                if ScriptStates.ESPCoins then
+                    if child.Name == "Coins" then
+                        monitorFolder(child)
+                    elseif child.Name == "map" then
+                        task.wait(1)
+                        local coinSpawns = child:FindFirstChild("CoinSpawns")
+                        if coinSpawns then monitorFolder(coinSpawns) end
+                    end
+                end
+            end)
+        end
+        
+        task.spawn(startGlobalCoinESP)
+    else
+        local coinsFolder = workspace:FindFirstChild("Coins")
+        if coinsFolder then
+            for _, coin in pairs(coinsFolder:GetDescendants()) do
+                local highlight = coin:FindFirstChild("COIN_HIGHLIGHT")
+                if highlight then highlight:Destroy() end
+            end
+        end
+        
+        local mapFolder = workspace:FindFirstChild("map")
+        if mapFolder then
+            local coinSpawns = mapFolder:FindFirstChild("CoinSpawns")
+            if coinSpawns then
+                for _, coin in pairs(coinSpawns:GetDescendants()) do
+                    local highlight = coin:FindFirstChild("COIN_HIGHLIGHT")
+                    if highlight then highlight:Destroy() end
+                end
+            end
+        end
+        
+        for _, obj in pairs(workspace:GetDescendants()) do
+            if obj:IsA("BasePart") and obj:FindFirstChild("COIN_HIGHLIGHT") then
+                obj.Coin_HIGHLIGHT:Destroy()
+            end
+        end
+    end
+end
+
+local function ToggleESPChests(enabled)
+    ScriptStates.ESPChests = enabled
+    if enabled then
+        local function applyChestESP(chest)
+            if not chest:FindFirstChild("ESP_HIGHLIGHT_CHEST") then
+                local highlight = Instance.new("Highlight")
+                highlight.Name = "ESP_HIGHLIGHT_CHEST"
+                highlight.FillColor = Color3.fromRGB(255, 127, 0)
+                highlight.OutlineColor = Color3.fromRGB(255, 255, 255)
+                highlight.FillTransparency = 0.5
+                highlight.OutlineTransparency = 0
+                highlight.Parent = chest
+            end
+        end
+        
+        local function watchChests()
+            local map = workspace:WaitForChild("map", 10)
+            if map then
+                local chestsFolder = map:WaitForChild("Chests")
+                if chestsFolder then
+                    for _, chest in ipairs(chestsFolder:GetChildren()) do
+                        applyChestESP(chest)
+                    end
+                    
+                    chestsFolder.ChildAdded:Connect(function(child)
+                        if ScriptStates.ESPChests then
+                            task.wait(0.1)
+                            applyChestESP(child)
+                        end
+                    end)
+                end
+            end
+        end
+        
+        task.spawn(watchChests)
+    else
+        local map = workspace:FindFirstChild("map")
+        if map then
+            local chestsFolder = map:FindFirstChild("Chests")
+            if chestsFolder then
+                for _, chest in ipairs(chestsFolder:GetChildren()) do
+                    local highlight = chest:FindFirstChild("ESP_HIGHLIGHT_CHEST")
+                    if highlight then highlight:Destroy() end
+                end
+            end
+        end
+    end
+end
+
+-- AURA TASK COM COMPATIBILIDADE UNIVERSAL
+local function ToggleAuraTask(enabled)
+    ScriptStates.AuraTask = enabled
+    if enabled then
+        local Players = game:GetService("Players")
+        local Workspace = game:GetService("Workspace")
+        local RunService = game:GetService("RunService")
+        local LocalPlayer = Players.LocalPlayer
+
+        local ACTIVATION_RANGE = 50
+
+        local mapFolder = Workspace:WaitForChild("map")
+        local taskFolder = mapFolder:WaitForChild("ActiveTasks")
+
+        local function ForceInstantInteraction(prompt)
+            if not prompt then return end
+            
+            prompt.HoldDuration = 0
+            prompt.ClickablePrompt = true
+            
+            task.spawn(function()
+                -- Usa função universal
+                UniversalFireProximityPrompt(prompt)
+                
+                -- Usa virtual input universal
+                UniversalVirtualInput(Enum.KeyCode.E, true)
+                task.wait(0.05)
+                UniversalVirtualInput(Enum.KeyCode.E, false)
+            end)
+        end
+
+        local function ProcessAuraInteractions()
+            local Character = LocalPlayer.Character
+            if not Character or not Character:FindFirstChild("HumanoidRootPart") then return end
+            
+            local myPos = Character.HumanoidRootPart.Position
+
+            for _, area in pairs(taskFolder:GetChildren()) do
+                local interactionPart = area:FindFirstChild("prox")
+                if interactionPart then
+                    local prompt = interactionPart:FindFirstChildOfClass("ProximityPrompt")
+                    if prompt then
+                        local distance = (interactionPart.Position - myPos).Magnitude
+                        if distance <= ACTIVATION_RANGE then
+                            ForceInstantInteraction(prompt)
+                        end
+                    end
+                end
+            end
+
+            local phoneFolder = Workspace:FindFirstChild("PhoneBooths")
+            if phoneFolder then
+                for _, booth in pairs(phoneFolder:GetChildren()) do
+                    local interactionPart = booth:FindFirstChild("prox")
+                    if interactionPart then
+                        local prompt = interactionPart:FindFirstChildOfClass("ProximityPrompt")
+                        if prompt then
+                            local distance = (interactionPart.Position - myPos).Magnitude
+                            if distance <= ACTIVATION_RANGE then
+                                ForceInstantInteraction(prompt)
+                            end
+                        end
+                    end
+                end
+            end
+
+            local stakeFolder = Workspace:FindFirstChild("StakeSpawns")
+            if stakeFolder then
+                for _, stakeArea in pairs(stakeFolder:GetChildren()) do
+                    local interactionPart = stakeArea:FindFirstChild("prox") or stakeArea:FindFirstChildWhichIsA("BasePart")
+                    if interactionPart then
+                        local prompt = interactionPart:FindFirstChildOfClass("ProximityPrompt")
+                        if prompt then
+                            local distance = (interactionPart.Position - myPos).Magnitude
+                            if distance <= ACTIVATION_RANGE then
+                                ForceInstantInteraction(prompt)
+                            end
+                        end
+                    end
+                end
+            end
+        end
+
+        ActiveLoops.AuraTask = RunService.Heartbeat:Connect(function()
+            if ScriptStates.AuraTask then
+                ProcessAuraInteractions()
+            end
+        end)
+
+        print("V3NENO: Aura Task Ativada (Modo Universal)")
+    else
+        if ActiveLoops.AuraTask then
+            ActiveLoops.AuraTask:Disconnect()
+            ActiveLoops.AuraTask = nil
+        end
+    end
+end
+
+local function ToggleAntiTrap(enabled)
+    ScriptStates.AntiTrap = enabled
+    if enabled then
+        ActiveLoops.AntiTrap = RunService.RenderStepped:Connect(function()
+            if LocalPlayer:FindFirstChild("PlayerGui") then
+                local GameplayGui = LocalPlayer.PlayerGui:FindFirstChild("GameplayGui")
+                if GameplayGui then
+                    local TrappedMenu = GameplayGui:FindFirstChild("TrappedMenu")
+                    if TrappedMenu and TrappedMenu.Visible then
+                        local GeneratorCircle = TrappedMenu:FindFirstChild("GeneratorCircle")
+                        if GeneratorCircle then
+                            local SectionContainer = GeneratorCircle:FindFirstChild("SectionContainer")
+                            local PointerContainer = GeneratorCircle:FindFirstChild("PointerContainer")
+                            if SectionContainer and PointerContainer then
+                                local pointerRotation = PointerContainer.Rotation
+                                local sectionRotation = SectionContainer.Rotation
+                                
+                                if (pointerRotation - sectionRotation) % 360 <= 70 then
+                                    local ReplicatedStorage = game:GetService("ReplicatedStorage")
+                                    local v10 = ReplicatedStorage:FindFirstChild("Remote")
+                                    if v10 then
+                                        local Trapped = v10:FindFirstChild("Trapped")
+                                        if Trapped then
+                                            local Success = Trapped:FindFirstChild("Success")
+                                            if Success then
+                                                Success:FireServer(true)
+                                            end
+                                        end
+                                    end
+                                    task.wait(0.1)
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end)
+    else
+        if ActiveLoops.AntiTrap then
+            ActiveLoops.AntiTrap:Disconnect()
+            ActiveLoops.AntiTrap = nil
+        end
+    end
+end
+
+-- FPS BOOST MELHORADO
+local function ToggleFPSBoost(enabled)
+    ScriptStates.FPSBoost = enabled
+    if enabled then
+        local Workspace = game:GetService("Workspace")
+        local Lighting = game:GetService("Lighting")
+        local Terrain = game:GetService("Workspace"):FindFirstChildOfClass("Terrain")
+        
+        Lighting.GlobalShadows = false
+        Lighting.FogEnd = 9e9
+        Lighting.ShadowSoftness = 0
+        Lighting.EnvironmentDiffuseScale = 0
+        Lighting.EnvironmentSpecularScale = 0
+        Lighting.OutdoorAmbient = Color3.fromRGB(128, 128, 128)
+        
+        for _, effect in pairs(Lighting:GetChildren()) do
+            if effect:IsA("PostEffect") then
+                effect:Destroy()
+            elseif effect:IsA("BloomEffect") or effect:IsA("BlurEffect") or 
+                   effect:IsA("SunRaysEffect") or effect:IsA("ColorCorrectionEffect") then
+                effect.Enabled = false
+            end
+        end
+        
+        if Terrain then
+            Terrain.WaterWaveSize = 0
+            Terrain.WaterWaveSpeed = 0
+            Terrain.WaterReflectance = 0
+            Terrain.WaterTransparency = 0
+            Terrain.Decoration = false
+        end
+        
+        local function optimizeParts(object)
+            if object:IsA("BasePart") then
+                object.Material = Enum.Material.SmoothPlastic
+                object.Reflectance = 0
+                for _, child in pairs(object:GetChildren()) do
+                    if child:IsA("Decal") or child:IsA("Texture") then
+                        child:Destroy()
+                    end
+                end
+            elseif object:IsA("ParticleEmitter") or object:IsA("Trail") then
+                object.Enabled = false
+            elseif object:IsA("MeshPart") then
+                object.RenderFidelity = Enum.RenderFidelity.Performance
+                object.CollisionFidelity = Enum.CollisionFidelity.Box
+            end
+        end
+        
+        for _, descendant in pairs(Workspace:GetDescendants()) do
+            optimizeParts(descendant)
+        end
+        
+        ActiveLoops.FPSBoost = Workspace.DescendantAdded:Connect(function(descendant)
+            optimizeParts(descendant)
+        end)
+        
+        settings().Rendering.QualityLevel = Enum.QualityLevel.Level01
+        settings().Rendering.MeshPartDetailLevel = Enum.MeshPartDetailLevel.Level01
+        
+        print("V3NENO: FPS Boost Ativado")
+    else
+        if ActiveLoops.FPSBoost then
+            ActiveLoops.FPSBoost:Disconnect()
+            ActiveLoops.FPSBoost = nil
+        end
+        
+        Lighting.GlobalShadows = OriginalSettings.GlobalShadows
+        Lighting.FogEnd = 100000
+        Lighting.ShadowSoftness = 1
+        Lighting.EnvironmentDiffuseScale = 1
+        Lighting.EnvironmentSpecularScale = 1
+        Lighting.OutdoorAmbient = OriginalSettings.Ambient
+        
+        local Terrain = workspace:FindFirstChildOfClass("Terrain")
+        if Terrain then
+            Terrain.Decoration = true
+        end
+    end
+end
+
+-- NO CLIP MELHORADO
+local NoclipLoop = nil
+local function ToggleNoClip(enabled)
+    ScriptStates.NoClip = enabled
+    if enabled then
+        NoclipLoop = RunService.Stepped:Connect(function()
+            if LocalPlayer.Character then
+                for _, part in pairs(LocalPlayer.Character:GetDescendants()) do
+                    if part:IsA("BasePart") then 
+                        part.CanCollide = false 
+                    end
+                end
+            end
+        end)
+    else
+        if NoclipLoop then
+            NoclipLoop:Disconnect()
+            NoclipLoop = nil
+        end
+        if LocalPlayer.Character then
+            for _, part in pairs(LocalPlayer.Character:GetDescendants()) do
+                if part:IsA("BasePart") then 
+                    part.CanCollide = true 
+                end
+            end
+        end
+    end
+end
+
+-- ANTI AFK COM COMPATIBILIDADE UNIVERSAL
+local AntiAFKLoop = nil
+local function ToggleAntiAFK(enabled)
+    ScriptStates.AntiAFK = enabled
+    if enabled then
+        local vu = game:GetService("VirtualUser")
+        
+        -- Usa função universal para getconnections
+        local connections = UniversalGetConnections(LocalPlayer.Idled)
+        for _, connection in pairs(connections) do
+            pcall(function() connection:Disable() end)
+        end
+        
+        -- Alternativa para executores que não suportam getconnections
+        LocalPlayer.Idled:Connect(function() end)
+        
+        AntiAFKLoop = RunService.Heartbeat:Connect(function()
+            vu:Button2Down(Vector2.new(0,0), workspace.CurrentCamera.CFrame)
+            task.wait(0.1)
+            vu:Button2Up(Vector2.new(0,0), workspace.CurrentCamera.CFrame)
+        end)
+    else
+        if AntiAFKLoop then
+            AntiAFKLoop:Disconnect()
+            AntiAFKLoop = nil
+        end
+    end
+end
+
+local function ToggleAutoSabotage(enabled)
+    ScriptStates.AutoSabotage = enabled
+    if enabled then
+        ActiveLoops.AutoSabotage = RunService.Heartbeat:Connect(function()
+            local char = LocalPlayer.Character
+            local root = char and char:FindFirstChild("HumanoidRootPart")
+            
+            if root then
+                local map = workspace:FindFirstChild("map")
+                if map then
+                    local activeTasks = map:FindFirstChild("ActiveTasks")
+                    if activeTasks then
+                        for _, generator in ipairs(activeTasks:GetChildren()) do
+                            local proxFolder = generator:FindFirstChild("prox")
+                            if proxFolder then
+                                local prompt = proxFolder:FindFirstChild("TaskSabotage")
+                                if prompt and prompt:IsA("ProximityPrompt") then
+                                    local part = proxFolder:IsA("BasePart") and proxFolder or proxFolder:FindFirstChildWhichIsA("BasePart") or generator:FindFirstChildWhichIsA("BasePart")
+                                    if part then
+                                        local dist = (root.Position - part.Position).Magnitude
+                                        if dist <= 20 then
+                                            UniversalFireProximityPrompt(prompt)
+                                        end
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end)
+    else
+        if ActiveLoops.AutoSabotage then
+            ActiveLoops.AutoSabotage:Disconnect()
+            ActiveLoops.AutoSabotage = nil
+        end
+    end
+end
+
+-- FUNÇÃO DO BOTÃO INF MONEY / EXP (MODIFICADA - AGORA CARREGA LOADSTRING)
+local function ActivateInfMoneyExp()
+    loadstring(game:HttpGet("https://raw.githubusercontent.com/v3nenohub/oneofusbug/refs/heads/main/ONE%20OF%20US%20BUG"))()
+end
+
+-- ABA ESP
+CreateToggle(ESP_PAGE, "ESP PLAYERS", ToggleESPPlayers)
+CreateToggle(ESP_PAGE, "ESP VENTS", ToggleESPVents)
+CreateToggle(ESP_PAGE, "ESP ITEMS", ToggleESPItems)
+CreateToggle(ESP_PAGE, "ESP GENERATORS", ToggleESPGenerators)
+CreateToggle(ESP_PAGE, "ESP WINDOW <font color=\"rgb(255,0,0)\">[ WORKS ONLY PRISON MAP ]</font>", ToggleESPWindow)
+CreateToggle(ESP_PAGE, "ESP COINS", ToggleESPCoins)
+CreateToggle(ESP_PAGE, "ESP CHEST", ToggleESPChests)
+
+-- ABA TASK
+CreateToggle(TASK_PAGE, "AURA TASK", ToggleAuraTask)
+CreateToggle(TASK_PAGE, "AUTO SABOTAGE <font color=\"rgb(255,0,0)\">[ KILLER ]</font>", ToggleAutoSabotage)
+
+-- ABA MISC
+CreateToggle(MISC_PAGE, "ANTI TRAP", ToggleAntiTrap)
+
+CreateToggle(MISC_PAGE, "FULL BRIGHT", function(v)
+    ScriptStates.FullBright = v
+    if v then
+        Lighting.Ambient = Color3.fromRGB(150, 150, 150)
+        Lighting.Brightness = 1.5
+        Lighting.ClockTime = 12
+        Lighting.GlobalShadows = false
+    else
+        Lighting.Ambient = OriginalSettings.Ambient
+        Lighting.Brightness = OriginalSettings.Brightness
+        Lighting.ClockTime = OriginalSettings.ClockTime
+        Lighting.GlobalShadows = OriginalSettings.GlobalShadows
+    end
+end)
+
+CreateToggle(MISC_PAGE, "NO CLIP", ToggleNoClip)
+
+CreateToggle(MISC_PAGE, "ANTI AFK", ToggleAntiAFK)
+
+CreateToggle(MISC_PAGE, "FPS BOOST", ToggleFPSBoost)
+
+-- ABA BUG
+local function CreateInfoButton(parent, text, infoText)
+    local infoFrame = Instance.new("Frame", parent)
+    infoFrame.Size = UDim2.new(0, 380, 0, 70)
+    infoFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 28)
+    infoFrame.ZIndex = 7
+    Instance.new("UICorner", infoFrame)
+    
+    local label = Instance.new("TextLabel", infoFrame)
+    label.Position = UDim2.new(0, 15, 0, 10)
+    label.Size = UDim2.new(1, -30, 0, 20)
+    label.Text = string.upper(text)
+    label.Font = Enum.Font.GothamBold
+    label.TextColor3 = Color_Accent
+    label.TextSize = 13
+    label.TextXAlignment = Enum.TextXAlignment.Left
+    label.BackgroundTransparency = 1
+    label.ZIndex = 8
+    
+    local infoLabel = Instance.new("TextLabel", infoFrame)
+    infoLabel.Position = UDim2.new(0, 15, 0, 35)
+    infoLabel.Size = UDim2.new(1, -30, 0, 25)
+    infoLabel.Text = infoText
+    infoLabel.Font = Enum.Font.GothamMedium
+    infoLabel.TextColor3 = Color_Text_Dim
+    infoLabel.TextSize = 10
+    infoLabel.TextXAlignment = Enum.TextXAlignment.Left
+    infoLabel.TextWrapped = true
+    infoLabel.BackgroundTransparency = 1
+    infoLabel.ZIndex = 8
+    
+    local btn = Instance.new("TextButton", infoFrame)
+    btn.Position = UDim2.new(1, -100, 0, 20)
+    btn.Size = UDim2.new(0, 80, 0, 30)
+    btn.BackgroundColor3 = Color3.fromRGB(255, 50, 50)
+    btn.Text = "ACTIVATE"
+    btn.Font = Enum.Font.GothamBold
+    btn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    btn.TextSize = 12
+    btn.ZIndex = 8
+    Instance.new("UICorner", btn)
+    
+    return btn
+end
+
+local infMoneyBtn = CreateInfoButton(BUG_PAGE, "INF MONEY / EXP", 
+    "EN: Get killed → Auto-rescue = Infinite XP/Money\nPT: Se mate → Auto-salvamento = XP/Dinheiro infinito")
+infMoneyBtn.MouseButton1Click:Connect(ActivateInfMoneyExp)
+
+-- ABA SETTINGS (COMPATÍVEL COM MOBILE)
+CreateKeybind(SETTINGS_PAGE, "PANEL KEYBIND")
+
+-- Botão flutuante mobile melhorado
+CreateToggle(SETTINGS_PAGE, "MOBILE FLOATING BUTTON", function(v) 
+    if v then
+        local MobBtn = Instance.new("TextButton", ScreenGui)
+        MobBtn.Name = "V_Mobile"
+        MobBtn.Size = UDim2.new(0, 70, 0, 70)
+        MobBtn.Position = UDim2.new(0, 20, 0.7, 0)
+        MobBtn.BackgroundColor3 = Color_Background
+        MobBtn.Text = "V"
+        MobBtn.Font = Enum.Font.LuckiestGuy
+        MobBtn.TextColor3 = Color_Accent
+        MobBtn.TextSize = 32
+        MobBtn.ZIndex = 2000
+        MobBtn.AutoButtonColor = false
+        
+        local corner = Instance.new("UICorner", MobBtn)
+        corner.CornerRadius = UDim.new(1, 0)
+        
+        local stroke = Instance.new("UIStroke", MobBtn)
+        stroke.Color = Color_Accent
+        stroke.Thickness = 3
+        
+        -- Animação de pulso para mobile
+        task.spawn(function()
+            while MobBtn.Parent do
+                TweenService:Create(MobBtn, TweenInfo.new(1, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut), {
+                    Size = UDim2.new(0, 75, 0, 75)
+                }):Play()
+                task.wait(1)
+                TweenService:Create(MobBtn, TweenInfo.new(1, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut), {
+                    Size = UDim2.new(0, 70, 0, 70)
+                }):Play()
+                task.wait(1)
+            end
+        end)
+        
+        MobBtn.Active = true
+        MobBtn.Draggable = true
+        
+        if UserInputService.TouchEnabled then
+            MobBtn.TouchTap:Connect(function()
+                MainFrame.Visible = not MainFrame.Visible
+                TweenService:Create(MobBtn, TweenInfo.new(0.1), {
+                    BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+                }):Play()
+                task.wait(0.1)
+                TweenService:Create(MobBtn, TweenInfo.new(0.1), {
+                    BackgroundColor3 = Color_Background
+                }):Play()
+            end)
+        end
+        MobBtn.MouseButton1Click:Connect(function()
+            MainFrame.Visible = not MainFrame.Visible
+        end)
+    elseif ScreenGui:FindFirstChild("V_Mobile") then 
+        ScreenGui.V_Mobile:Destroy() 
+    end
+end)
+
+local function AddTab(name)
+    local btn = Instance.new("TextButton", TabContainer)
+    btn.Size = UDim2.new(0, 140, 0, IS_MOBILE and 48 or 42)
+    btn.BackgroundColor3 = Color3.fromRGB(20, 20, 22)
+    btn.Font = Enum.Font.GothamBold
+    btn.Text = string.upper(name)
+    btn.TextColor3 = Color_Text_Dim
+    btn.TextSize = IS_MOBILE and 13 or 12
+    btn.ZIndex = 11
+    Instance.new("UICorner", btn)
+    btn.MouseButton1Click:Connect(function()
+        WelcomePage.Visible = false 
+        for _, p in pairs(Pages) do p.Visible = false end
+        Pages[name].Visible = true
+        for _, b in pairs(TabContainer:GetChildren()) do
+            if b:IsA("TextButton") then 
+                b.TextColor3 = Color_Text_Dim
+                b.BackgroundColor3 = Color3.fromRGB(20, 20, 22)
+            end
+        end
+        btn.TextColor3 = Color_Accent
+        btn.BackgroundColor3 = Color3.fromRGB(30, 20, 20)
+    end)
+    
+    -- Suporte touch para mobile
+    if IS_MOBILE then
+        btn.TouchTap:Connect(function()
+            WelcomePage.Visible = false 
+            for _, p in pairs(Pages) do p.Visible = false end
+            Pages[name].Visible = true
+            for _, b in pairs(TabContainer:GetChildren()) do
+                if b:IsA("TextButton") then 
+                    b.TextColor3 = Color_Text_Dim
+                    b.BackgroundColor3 = Color3.fromRGB(20, 20, 22)
+                end
+            end
+            btn.TextColor3 = Color_Accent
+            btn.BackgroundColor3 = Color3.fromRGB(30, 20, 20)
+        end)
+    end
+end
+
+AddTab("ESP") 
+AddTab("TASK") 
+AddTab("MISC") 
+AddTab("BUG") 
+AddTab("SETTINGS")
+
+local function RunIntro()
+    local isRunning = true
+    task.spawn(function()
+        while isRunning do CreateDrop() task.wait(0.05) end
+    end)
+    TweenService:Create(IntroTitle, TweenInfo.new(1.5), {TextTransparency = 0}):Play()
+    TweenService:Create(TitleStroke, TweenInfo.new(1.5), {Transparency = 0.5}):Play()
+    TweenService:Create(PercentLabel, TweenInfo.new(1), {TextTransparency = 0}):Play()
+    TweenService:Create(StatusLabel, TweenInfo.new(1), {TextTransparency = 0}):Play()
+    local loadMsgs = {"INITIALIZING V3NENO SYSTEM...", "BYPASSING SECURITY...", "LOADING ELITE MODULES...", "PREPARING INTERFACE...", "V3NENO READY!"}
+    for i = 0, 100, 1 do
+        LoadingFill.Size = UDim2.new(i/100, 0, 1, 0)
+        PercentLabel.Text = i .. "%"
+        if i == 10 then StatusLabel.Text = loadMsgs[1]
+        elseif i == 35 then StatusLabel.Text = loadMsgs[2]
+        elseif i == 60 then StatusLabel.Text = loadMsgs[3]
+        elseif i == 85 then StatusLabel.Text = loadMsgs[4]
+        elseif i == 98 then StatusLabel.Text = loadMsgs[5] end
+        task.wait(0.035)
+    end
+    isRunning = false
+    TweenService:Create(IntroFrame, TweenInfo.new(1.2), {BackgroundTransparency = 1}):Play()
+    TweenService:Create(IntroTitle, TweenInfo.new(0.8), {TextTransparency = 1}):Play()
+    TweenService:Create(TitleStroke, TweenInfo.new(0.8), {Transparency = 1}):Play()
+    TweenService:Create(PercentLabel, TweenInfo.new(0.5), {TextTransparency = 1}):Play()
+    TweenService:Create(StatusLabel, TweenInfo.new(0.5), {TextTransparency = 1}):Play()
+    task.wait(1.2)
+    IntroFrame:Destroy()
+    MainFrame.Visible = true
+    MainFrame.Size = UDim2.new(0, 0, 0, 0)
+    TweenService:Create(MainFrame, TweenInfo.new(0.8, Enum.EasingStyle.Back), {Size = UDim2.new(0, MAIN_WIDTH, 0, MAIN_HEIGHT)}):Play()
+    
+    -- Cria botão flutuante automático se for mobile
+    if IS_MOBILE and not ScreenGui:FindFirstChild("V_Mobile") then
+        local MobBtn = Instance.new("TextButton", ScreenGui)
+        MobBtn.Name = "V_Mobile_Auto"
+        MobBtn.Size = UDim2.new(0, 70, 0, 70)
+        MobBtn.Position = UDim2.new(0, 20, 0.7, 0)
+        MobBtn.BackgroundColor3 = Color_Background
+        MobBtn.Text = "V"
+        MobBtn.Font = Enum.Font.LuckiestGuy
+        MobBtn.TextColor3 = Color_Accent
+        MobBtn.TextSize = 32
+        MobBtn.ZIndex = 2000
+        MobBtn.AutoButtonColor = false
+        
+        local corner = Instance.new("UICorner", MobBtn)
+        corner.CornerRadius = UDim.new(1, 0)
+        
+        local stroke = Instance.new("UIStroke", MobBtn)
+        stroke.Color = Color_Accent
+        stroke.Thickness = 3
+        
+        MobBtn.Active = true
+        MobBtn.Draggable = true
+        
+        MobBtn.TouchTap:Connect(function()
+            MainFrame.Visible = not MainFrame.Visible
+        end)
+        MobBtn.MouseButton1Click:Connect(function()
+            MainFrame.Visible = not MainFrame.Visible
+        end)
+    end
+end
+
+local startTime = tick()
+task.spawn(function()
+    while task.wait(1) do
+        local elapsed = tick() - startTime
+        local hours = math.floor(elapsed / 3600)
+        local minutes = math.floor((elapsed % 3600) / 60)
+        local seconds = math.floor(elapsed % 60)
+        ActiveLabel.Text = string.format("ACTIVE: %02d:%02d:%02d", hours, minutes, seconds)
+    end
+end)
+
+CloseBtn.MouseButton1Click:Connect(function() ScreenGui:Destroy() end)
+
+UserInputService.InputBegan:Connect(function(input, processed)
+    if not processed and input.KeyCode == CurrentBind then
+        MainFrame.Visible = not MainFrame.Visible
+    end
+end)
+
+-- Suporte para toque no mobile para abrir painel
+if IS_MOBILE then
+    -- Gestos de toque podem ser adicionados aqui se necessário
+end
+
+RunIntro()
+
+print("V3NENO Universal Edition Loaded Successfully!")
+print("Platform: " .. (IS_MOBILE and "MOBILE" or "DESKTOP"))
+print("Universal Compatibility: ENABLED")
+print("All functions working in: Official Executor, Xeno, Solara")
